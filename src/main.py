@@ -31,24 +31,26 @@ def config_log():
     logging.basicConfig(handlers=[fh, ch])    
 
 
-CommandTypes = {
-    "READ": ['username','application'],
-    "GEN": ['username','application'],
-    "CREATE": ['username','application','password'],
-    "UPDATE": ['username','application','password'],
-    "DELETE": ['username','application'],
-    "DONE": [],
-    # TODO[MS]: The commands below are internal - find a way to exclude users from using them (probably some "Command" object)
-    "REGISTER_GOOGLE_DRIVE": ['username', 'password'],
-    "CREATE_ENCRYPTION_KEY": ['encryption_key'],
-    "CHOOSE_DATABASE_LOCATION": ['database_location'],
-    # TODO[MS]: This information should be provided by the DB module (necessary info for DB location)
-    "DATABASE_DATABASELOCATION_LOCAL": ['db_file']
-}
+def initialize_cmd():
+    CommandTypes = {
+        "READ": ['username','application'],
+        "GEN": ['username','application'],
+        "CREATE": ['username','application','password'],
+        "UPDATE": ['username','application','password'],
+        "DELETE": ['username','application'],
+        "DONE": [],
+        # TODO[MS]: The commands below are internal - find a way to exclude users from using them (probably some "Command" object)
+        "REGISTER_GOOGLE_DRIVE": ['username', 'password'],
+        "CREATE_ENCRYPTION_KEY": ['encryption_key'],
+        "CHOOSE_DATABASE_LOCATION": ['database_location'],
+        # TODO[MS]: This information should be provided by the DB module (necessary info for DB location)
+        "DATABASE_DATABASELOCATION_LOCAL": ['db_file']
+    }
+    command.init_cmd(CommandTypes)
 
-DB_COLUMNS = ('username', 'application', 'password')
 
 def initialize_db():
+    DB_COLUMNS = ('username', 'application', 'password')
     if database.db_config_exists():
         database.init_db()
     else:
@@ -63,8 +65,8 @@ def initialize_db():
 
 def initialize_everything():
     config_log()
-    command.init_cmd(CommandTypes)
     initialize_db()
+    initialize_cmd()
     _, user_args = command.get_user_cmd("CREATE_ENCRYPTION_KEY")
     encrypt.init_encrypt(user_args.encryption_key)
 
