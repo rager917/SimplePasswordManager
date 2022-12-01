@@ -23,12 +23,11 @@ def get_possible_cmds():
 def get_user_cmd(user_cmd = None):
     if not user_cmd:
         user_cmd = input("Give password manager a command: ")
-    LOGGER.debug(f"{user_cmd} was called")
     if user_cmd in CommandTypes:
         user_args = []
         for field in CommandTypes[user_cmd]:
             user_args.append(input(f'{field.upper()}: '))
-        LOGGER.debug(f"args: {CommandTypesObjects[user_cmd](*user_args)}")
+        LOGGER.debug(f"{user_cmd} was called with args: {CommandTypesObjects[user_cmd](*user_args)}")
         return CommandMode[user_cmd],CommandTypesObjects[user_cmd](*user_args)
     else:
         LOGGER.error(f"'{user_cmd}' ain't a legal command!")
