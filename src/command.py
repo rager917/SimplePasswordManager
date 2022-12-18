@@ -4,7 +4,7 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
-# TODO[MS]: add 'options' and 'defaults' functionality for this module
+# TODO[MS]: add 'options', 'help' and 'defaults' functionality for this module
 
 CommandTypes = None
 CommandTypesObjects = None

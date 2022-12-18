@@ -1,22 +1,29 @@
 import command
 import logging
 import encrypt
+from database import SqlDatabase
 import database
 import os
 import argparse
+from collections import namedtuple
 import cryptography
+import string
+import random
+
 
 class CustomFormatter(logging.Formatter):
     grey = "\x1b[38;20m"
+    green = "\x1b[1;32m"
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
     bold_red = "\x1b[31;1m"
     reset = "\x1b[0m"
+    blue = "\x1b[1;34m"
     format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s (%(filename)s:%(lineno)d)"
 
     FORMATS = {
-        logging.DEBUG: grey + format + reset,
-        logging.INFO: grey + format + reset,
+        logging.DEBUG: green + format + reset,
+        logging.INFO: blue + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
         logging.CRITICAL: bold_red + format + reset
@@ -35,11 +42,12 @@ def config_log():
 
 CommandTypes = {
     "READ": ['username','application'],
-    "GEN": ['username','application'],
+    "GENERATE": ['username','application', 'password_length'],
     "CREATE": ['username','application','password'],
     "UPDATE": ['username','application','password'],
     "DELETE": ['username','application'],
     "PRINT_ALL": [],
+    "PRINT_ALL_ENCRYPTED": [],
     "DONE": [],
     # TODO[MS]: The commands below are internal - find a way to exclude users from using them (probably some "Command" object)
     "CREATE_ENCRYPTION_KEY": ['encryption_key'],
@@ -57,12 +65,12 @@ def get_user_flags(args=None):
     parser.add_argument('-encryption_key', help="DB symmetric cryptographic key")
     parser.add_argument('-db_location', help="Choose a DB location (local or remote)")
     parser.add_argument('-db_file', help="DB file location for local databases")
+    parser.add_argument('-include_punctuation_in_password_generation', default=1, help="Self explanatory")
     return parser.parse_args(args=args)
 
 class FlowManager:
     def __init__(self, args=None):
         self.args = get_user_flags(args=args)
-        config_log()
 
     def initialize_db(self):
         DB_COLUMNS = ('username', 'application', 'password', 'salt')
@@ -87,6 +95,38 @@ class FlowManager:
         else:
             self.start_non_interactive_mode()
 
+    def get_random_string(self, length : int):
+        # choose from all lowercase letter
+        letters = string.ascii_lowercase + string.ascii_uppercase + string.digits
+        if self.args.include_punctuation_in_password_generation:
+            letters = letters + string.punctuation
+        return ''.join(random.choice(letters) for _ in range(length))
+
+    def call_db_create(self, DB : SqlDatabase, encryption_key, cmd):
+        salt = os.urandom(16)
+        encrypt.init_encrypt(encryption_key, salt)
+        DB.create(tuple(cmd._replace(password=encrypt.encrypt(cmd.password))) + (salt,))
+
+    def call_db_read(self, DB : SqlDatabase, encryption_key : str, cmd):
+        rows = DB.read(cmd)
+        if not rows:
+            logging.error("The given combination of user and app doesn't exist")
+        elif len(rows) > 2:
+            logging.error("WTF - more than one password for the same user and App")
+        else:
+            encryped_password, salt = rows[0]
+            encrypt.init_encrypt(encryption_key, salt)
+            try:
+                print(encrypt.decipher(encryped_password))
+            except cryptography.fernet.InvalidToken:
+                logging.error("Bad encryption key for this password")
+
+
+    def remove_and_add_fields_to_named_tuple(self, my_named_tuple, fields_to_remove : set, fields_to_add : dict):
+        common_dict = {field: val for field, val in my_named_tuple._asdict().items() if field not in fields_to_remove}
+        common_fields_type = namedtuple("COMMON_FIELDS_TYPE", list(common_dict.keys()) + list(fields_to_add.keys()))
+        return common_fields_type(**common_dict, **fields_to_add)
+
     def start_interactive_mode(self):
         initialize_cmd()
         with database.init_db(*self.initialize_db()) as DB:
@@ -96,37 +136,42 @@ class FlowManager:
                 _, encryption_args = command.get_user_cmd("CREATE_ENCRYPTION_KEY")
                 encryption_key = encryption_args.encryption_key
             while True:
-                try:
-                    mode, cmd = command.get_user_cmd()
-                    if mode == command.CommandMode.CREATE:
-                        salt = os.urandom(16)
+                mode, cmd = command.get_user_cmd()
+                if mode == command.CommandMode.CREATE:
+                    self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=cmd)
+                if mode == command.CommandMode.READ:
+                    self.call_db_read(DB=DB, encryption_key=encryption_key, cmd=cmd)
+                if mode == command.CommandMode.PRINT_ALL:
+                    for row in DB.read_all():
+                        user_name, app, encrypted_password, salt = row
                         encrypt.init_encrypt(encryption_key, salt)
-                        DB.create(tuple(cmd._replace(password=encrypt.encrypt(cmd.password))) + (salt,))
-                    if mode == command.CommandMode.READ:
-                        rows = DB.read(cmd)
-                        if not rows:
-                            logging.error("The given combination of user and app doesn't exist")
-                        elif len(rows) > 2:
-                            logging.error("WTF - more than one password for the same user and App")
-                        else:
-                            encryped_password, salt = rows[0]
-                            encrypt.init_encrypt(encryption_key, salt)
                         try:
-                            logging.info(encrypt.decipher(encryped_password))
+                            dec_password = encrypt.decipher(encrypted_password)
                         except cryptography.fernet.InvalidToken:
-                            logging.error("Bad encryption key for this password")
-                    if mode == command.CommandMode.PRINT_ALL:
-                        logging.info(DB.read_all())
-                    if mode == command.CommandMode.DONE:
-                        break
-                except:
-                    pass
+                            logging.error("PRINT_ALL isn't supported with multiple encryption keys")
+                            break
+                        print(f"{user_name}, {app}, {dec_password}")
+                if mode == command.CommandMode.PRINT_ALL_ENCRYPTED:
+                    for row in DB.read_all():
+                        user_name, app, encrypted_password, salt = row
+                        print(f"{user_name}, {app}, {encrypted_password}, {salt}")
+                if mode == command.CommandMode.GENERATE:
+                    new_cmd = self.remove_and_add_fields_to_named_tuple(cmd, {"password_length"}, 
+                                                                        {"password": self.get_random_string(int(cmd.password_length))})
+                    self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=new_cmd)
+                    logging.info(f"Succesfully generated new password: {new_cmd.password}")
+                if mode == command.CommandMode.DONE:
+                    break
+                    
 
     def start_non_interactive_mode(self):
         pass
 
 def main():
-    FlowManager().run()
-
+    config_log()
+    try:
+        FlowManager().run()
+    except Exception as e:
+        logging.critical(str(e))
 if __name__ == "__main__":
     main()

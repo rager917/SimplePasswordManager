@@ -7,7 +7,7 @@ import main
 
 user_arguments = [
     ("READ", OrderedDict([("username","rager917"), ("application","gmail")])),
-    ("GEN", OrderedDict([("username","rager917"), ("application","gmail")])),
+    ("GENERATE", OrderedDict([("username","rager917"), ("application","gmail"), ("password_length", 16)])),
     ("CREATE", OrderedDict([("username","rager917"), ("application","gmail"), ("password","my_password")])),
     ("DONE", OrderedDict([]))
 ]
