@@ -10,6 +10,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/src/main.py",
             "console": "integratedTerminal",
+            "args": ["-interactive", "-db_location", "LOCAL", "-db_file", "SimplePasswordManager.db"],
             "justMyCode": true
         }
     ]
