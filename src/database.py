@@ -1,16 +1,19 @@
 import os
 from enum import Enum
 import sqlite3
-import logging 
+import logging
 from contextlib import contextmanager
 
 LOGGER = logging.getLogger(__name__)
 
+
 def create_qmarks(container):
-    return ','.join(["?"] * len(container))
+    return ",".join(["?"] * len(container))
+
 
 def create_where_qmarks(data):
     return " AND ".join(f"{field}=?" for field in data._fields)
+
 
 class SqlDatabase:
     def __init__(self, columns, db_file):
@@ -25,7 +28,9 @@ class SqlDatabase:
         self.cur.execute(cmd, data)
 
     def read(self, data):
-        cmd = f"SELECT password, salt FROM passwords WHERE ({create_where_qmarks(data)})"
+        cmd = (
+            f"SELECT password, salt FROM passwords WHERE ({create_where_qmarks(data)})"
+        )
         self.cur.execute(cmd, [val for val in data])
         return self.cur.fetchall()
 
@@ -48,15 +53,17 @@ class SqlDatabase:
     def close_connection(self):
         self.connection.close()
 
-DatabaseLocation = Enum('DatabaseType', ["LOCAL"])
+
+DatabaseLocation = Enum("DatabaseType", ["LOCAL"])
+
 
 @contextmanager
-def init_db(columns, location : DatabaseLocation = None, db_file = None):
+def init_db(columns, location: DatabaseLocation = None, db_file=None):
     if location == DatabaseLocation.LOCAL:
-        DB = SqlDatabase(columns = columns, db_file=db_file)
+        DB = SqlDatabase(columns=columns, db_file=db_file)
     DB.open_connection()
     DB.create_db()
-    try: 
+    try:
         yield DB
     finally:
         DB.connection.commit()
