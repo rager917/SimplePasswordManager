@@ -8,6 +8,7 @@ import argparse
 from collections import namedtuple
 import cryptography
 import string
+from getpass import getpass
 import random
 
 
@@ -54,10 +55,7 @@ CommandTypes = {
     "PRINT_ALL_ENCRYPTED": [],
     "DONE": [],
     # TODO[MS]: The commands below are internal - find a way to exclude users from using them (probably some "Command" object)
-    "CREATE_ENCRYPTION_KEY": ["encryption_key"],
-    "CHOOSE_DATABASE_LOCATION": ["db_location"],
-    # TODO[MS]: This information should be provided by the DB module (necessary info for DB location)
-    "DATABASE_DATABASELOCATION_LOCAL": ["db_file"],
+    "CHOOSE_DATABASE_FILE": ["db_file"],
 }
 
 
@@ -70,9 +68,12 @@ def get_user_flags(args=None):
     parser.add_argument(
         "-interactive", nargs="?", default=0, const=1, help="Start interactive mode"
     )
-    parser.add_argument("-encryption_key", help="DB symmetric cryptographic key")
-    parser.add_argument("-db_location", help="Choose a DB location (local or remote)")
-    parser.add_argument("-db_file", help="DB file location for local databases")
+    parser.add_argument("-encryption_key", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "-db_file",
+        help="DB file location for local databases",
+        default="SimplePasswordManager.db",
+    )
     parser.add_argument(
         "-include_punctuation_in_password_generation",
         default=1,
@@ -87,22 +88,12 @@ class FlowManager:
 
     def initialize_db(self):
         DB_COLUMNS = ("username", "application", "password", "salt")
-        if self.args.db_location:
-            user_db_location = self.args.db_location
+        if self.args.db_file:
+            db_file = self.args.db_file
         else:
-            _, user_args = command.get_user_cmd("CHOOSE_DATABASE_LOCATION")
-            user_db_location = user_args.db_location
-        db_location = database.DatabaseLocation[user_db_location]
-        if db_location == database.DatabaseLocation.LOCAL:
-            if self.args.db_file:
-                db_file = self.args.db_file
-            else:
-                # TODO[MS]: add conversion from database.DatabaseLocation enum to a string
-                _, location_args = command.get_user_cmd(
-                    "DATABASE_DATABASELOCATION_LOCAL"
-                )
-                db_file = location_args.db_file
-            return (DB_COLUMNS, db_location, db_file)
+            _, user_args = command.get_user_cmd("CHOOSE_DATABASE_FILE")
+            db_file = user_args.db_file
+        return (DB_COLUMNS, db_file)
 
     def run(self):
         if self.args.interactive:
@@ -149,50 +140,53 @@ class FlowManager:
         )
         return common_fields_type(**common_dict, **fields_to_add)
 
+    def execute_user_command(self, user_cmd, DB, encryption_key):
+        mode, cmd = user_cmd
+        if mode == command.CommandMode.CREATE:
+            self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=cmd)
+        if mode == command.CommandMode.READ:
+            self.call_db_read(DB=DB, encryption_key=encryption_key, cmd=cmd)
+        if mode == command.CommandMode.PRINT_ALL:
+            for row in DB.read_all():
+                user_name, app, encrypted_password, salt = row
+                encrypt.init_encrypt(encryption_key, salt)
+                try:
+                    dec_password = encrypt.decipher(encrypted_password)
+                except cryptography.fernet.InvalidToken:
+                    logging.error(
+                        "PRINT_ALL isn't supported with multiple encryption keys"
+                    )
+                    break
+                print(f"{user_name}, {app}, {dec_password}")
+        if mode == command.CommandMode.PRINT_ALL_ENCRYPTED:
+            for row in DB.read_all():
+                user_name, app, encrypted_password, salt = row
+                print(f"{user_name}, {app}, {encrypted_password}, {salt}")
+        if mode == command.CommandMode.GENERATE:
+            new_cmd = self.remove_and_add_fields_to_named_tuple(
+                cmd,
+                {"password_length"},
+                {"password": self.get_random_string(int(cmd.password_length))},
+            )
+            self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=new_cmd)
+            logging.info(f"Succesfully generated new password: {new_cmd.password}")
+        if mode == command.CommandMode.DONE:
+            return True
+
     def start_interactive_mode(self):
         initialize_cmd()
         with database.init_db(*self.initialize_db()) as DB:
             if self.args.encryption_key:
                 encryption_key = self.args.encryption_key
             else:
-                _, encryption_args = command.get_user_cmd("CREATE_ENCRYPTION_KEY")
-                encryption_key = encryption_args.encryption_key
+                pass
+                encryption_key = getpass("ENCRYPTION_KEY: ")
             while True:
-                mode, cmd = command.get_user_cmd()
-                if mode == command.CommandMode.CREATE:
-                    self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=cmd)
-                if mode == command.CommandMode.READ:
-                    self.call_db_read(DB=DB, encryption_key=encryption_key, cmd=cmd)
-                if mode == command.CommandMode.PRINT_ALL:
-                    for row in DB.read_all():
-                        user_name, app, encrypted_password, salt = row
-                        encrypt.init_encrypt(encryption_key, salt)
-                        try:
-                            dec_password = encrypt.decipher(encrypted_password)
-                        except cryptography.fernet.InvalidToken:
-                            logging.error(
-                                "PRINT_ALL isn't supported with multiple encryption keys"
-                            )
-                            break
-                        print(f"{user_name}, {app}, {dec_password}")
-                if mode == command.CommandMode.PRINT_ALL_ENCRYPTED:
-                    for row in DB.read_all():
-                        user_name, app, encrypted_password, salt = row
-                        print(f"{user_name}, {app}, {encrypted_password}, {salt}")
-                if mode == command.CommandMode.GENERATE:
-                    new_cmd = self.remove_and_add_fields_to_named_tuple(
-                        cmd,
-                        {"password_length"},
-                        {"password": self.get_random_string(int(cmd.password_length))},
-                    )
-                    self.call_db_create(
-                        DB=DB, encryption_key=encryption_key, cmd=new_cmd
-                    )
-                    logging.info(
-                        f"Succesfully generated new password: {new_cmd.password}"
-                    )
-                if mode == command.CommandMode.DONE:
-                    break
+                user_cmd = command.get_user_cmd()
+                if user_cmd:
+                    done = self.execute_user_command(user_cmd, DB, encryption_key)
+                    if done:
+                        break
 
     def start_non_interactive_mode(self):
         pass

@@ -54,13 +54,9 @@ class SqlDatabase:
         self.connection.close()
 
 
-DatabaseLocation = Enum("DatabaseType", ["LOCAL"])
-
-
 @contextmanager
-def init_db(columns, location: DatabaseLocation = None, db_file=None):
-    if location == DatabaseLocation.LOCAL:
-        DB = SqlDatabase(columns=columns, db_file=db_file)
+def init_db(columns, db_file=None):
+    DB = SqlDatabase(columns=columns, db_file=db_file)
     DB.open_connection()
     DB.create_db()
     try:

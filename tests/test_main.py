@@ -8,7 +8,6 @@ import tempfile
 
 user_create_db_flow = [
     (
-        "LOCAL",
         "MyTestDB.db",
         "MyKey",
         "CREATE",
