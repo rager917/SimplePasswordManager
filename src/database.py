@@ -20,6 +20,9 @@ class SqlDatabase:
         self.columns = columns
         self.db_file = db_file
 
+    def get_db_location(self):
+        return self.db_file
+
     def create_db(self):
         self.cur.execute(f"CREATE TABLE if not exists passwords{self.columns}")
 

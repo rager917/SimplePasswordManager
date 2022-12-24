@@ -38,11 +38,13 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def config_log():
+def config_log(args):
     ch = logging.StreamHandler()
     ch.setFormatter(CustomFormatter())
     fh = logging.FileHandler("SimplePasswordManager.log", mode="w")
-    logging.basicConfig(handlers=[fh, ch], level=logging.INFO)
+    logging.basicConfig(
+        handlers=[fh, ch], level=logging.DEBUG if args.debug else logging.INFO
+    )
 
 
 CommandTypes = {
@@ -52,6 +54,7 @@ CommandTypes = {
     "UPDATE": ["username", "application", "password"],
     "DELETE": ["username", "application"],
     "PRINT_ALL": [],
+    "SHOW_DB_FILE": [],
     "PRINT_ALL_ENCRYPTED": [],
     "DONE": [],
     # TODO[MS]: The commands below are internal - find a way to exclude users from using them (probably some "Command" object)
@@ -79,12 +82,15 @@ def get_user_flags(args=None):
         default=1,
         help="Self explanatory",
     )
+    parser.add_argument(
+        "-debug", default=0, const=1, nargs="?", help="Self explanatory"
+    )
     return parser.parse_args(args=args)
 
 
 class FlowManager:
     def __init__(self, args=None):
-        self.args = get_user_flags(args=args)
+        self.args = args
 
     def initialize_db(self):
         DB_COLUMNS = ("username", "application", "password", "salt")
@@ -98,12 +104,10 @@ class FlowManager:
     def run(self):
         if self.args.interactive:
             self.start_interactive_mode()
-        else:
-            self.start_non_interactive_mode()
 
     def get_random_string(self, length: int):
         # choose from all lowercase letter
-        letters = string.ascii_lowercase + string.ascii_uppercase + string.digits
+        letters = string.ascii_lowercase + string.ascii_uppercase + string.digits - '"'
         if self.args.include_punctuation_in_password_generation:
             letters = letters + string.punctuation
         return "".join(random.choice(letters) for _ in range(length))
@@ -140,7 +144,7 @@ class FlowManager:
         )
         return common_fields_type(**common_dict, **fields_to_add)
 
-    def execute_user_command(self, user_cmd, DB, encryption_key):
+    def execute_user_command(self, user_cmd, DB: SqlDatabase, encryption_key: str):
         mode, cmd = user_cmd
         if mode == command.CommandMode.CREATE:
             self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=cmd)
@@ -170,6 +174,8 @@ class FlowManager:
             )
             self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=new_cmd)
             logging.info(f"Succesfully generated new password: {new_cmd.password}")
+        if mode == command.CommandMode.SHOW_DB_FILE:
+            logging.info(os.path.abspath(DB.get_db_location()))
         if mode == command.CommandMode.DONE:
             return True
 
@@ -179,8 +185,7 @@ class FlowManager:
             if self.args.encryption_key:
                 encryption_key = self.args.encryption_key
             else:
-                pass
-                encryption_key = getpass("ENCRYPTION_KEY: ")
+                encryption_key = input("ENCRYPTION_KEY: ")
             while True:
                 user_cmd = command.get_user_cmd()
                 if user_cmd:
@@ -188,14 +193,12 @@ class FlowManager:
                     if done:
                         break
 
-    def start_non_interactive_mode(self):
-        pass
-
 
 def main():
-    config_log()
+    args = get_user_flags()
+    config_log(args)
     try:
-        FlowManager().run()
+        FlowManager(args).run()
     except Exception as e:
         logging.critical(str(e))
 
