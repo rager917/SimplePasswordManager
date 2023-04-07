@@ -1,7 +1,7 @@
-import command
-import pytest
 from collections import OrderedDict
-import logging
+
+import pytest
+import command
 import main
 
 
@@ -51,5 +51,5 @@ def test_get_user_cmd(args, monkeypatch):
 
 def test_get_user_cmd_when_command_isnt_supported(caplog, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda _: "BAD")
-    cmd = command.get_user_cmd()
+    command.get_user_cmd()
     assert "'BAD' ain't a legal command!" in caplog.text

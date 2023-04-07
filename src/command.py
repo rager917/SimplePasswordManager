@@ -32,8 +32,10 @@ def get_user_cmd(user_cmd=None):
         for field in CommandTypes[user_cmd]:
             user_args.append(input(f"{field.upper()}: "))
         LOGGER.debug(
-            f"{user_cmd} was called with args: {CommandTypesObjects[user_cmd](*user_args)}"
+            "%s was called with args: %s",
+            user_cmd,
+            CommandTypesObjects[user_cmd](*user_args),
         )
         return CommandMode[user_cmd], CommandTypesObjects[user_cmd](*user_args)
     else:
-        LOGGER.error(f"'{user_cmd}' ain't a legal command!")
+        LOGGER.error("'%s' ain't a legal command!", user_cmd)

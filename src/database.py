@@ -1,5 +1,3 @@
-import os
-from enum import Enum
 import sqlite3
 import logging
 from contextlib import contextmanager
@@ -19,6 +17,9 @@ class SqlDatabase:
     def __init__(self, columns, db_file):
         self.columns = columns
         self.db_file = db_file
+        self.connection = sqlite3.connect(self.db_file)
+        self.connection.set_trace_callback(LOGGER.debug)
+        self.cur = self.connection.cursor()
 
     def get_db_location(self):
         return self.db_file
@@ -38,7 +39,7 @@ class SqlDatabase:
         return self.cur.fetchall()
 
     def read_all(self):
-        cmd = f"SELECT * FROM passwords"
+        cmd = "SELECT * FROM passwords"
         self.cur.execute(cmd)
         return self.cur.fetchall()
 
@@ -48,11 +49,6 @@ class SqlDatabase:
     def delete(self, data):
         pass
 
-    def open_connection(self):
-        self.connection = sqlite3.connect(self.db_file)
-        self.connection.set_trace_callback(LOGGER.debug)
-        self.cur = self.connection.cursor()
-
     def close_connection(self):
         self.connection.close()
 
@@ -60,7 +56,6 @@ class SqlDatabase:
 @contextmanager
 def init_db(columns, db_file=None):
     DB = SqlDatabase(columns=columns, db_file=db_file)
-    DB.open_connection()
     DB.create_db()
     try:
         yield DB

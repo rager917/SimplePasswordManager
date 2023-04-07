@@ -1,15 +1,16 @@
-import command
 import logging
-import encrypt
-from database import SqlDatabase
-import database
 import os
 import argparse
 from collections import namedtuple
-import cryptography
+import random
 import string
 from getpass import getpass
-import random
+
+import cryptography
+import command
+import encrypt
+import database
+from database import SqlDatabase
 
 
 class CustomFormatter(logging.Formatter):
@@ -107,18 +108,20 @@ class FlowManager:
 
     def get_random_string(self, length: int):
         # choose from all lowercase letter
-        letters = string.ascii_lowercase + string.ascii_uppercase + string.digits - '"'
+        letters = string.ascii_lowercase + string.ascii_uppercase + string.digits
         if self.args.include_punctuation_in_password_generation:
             letters = letters + string.punctuation
         return "".join(random.choice(letters) for _ in range(length))
 
-    def call_db_create(self, DB: SqlDatabase, encryption_key, cmd):
+    def call_db_create(self, password_db: SqlDatabase, encryption_key, cmd):
         salt = os.urandom(16)
         encrypt.init_encrypt(encryption_key, salt)
-        DB.create(tuple(cmd._replace(password=encrypt.encrypt(cmd.password))) + (salt,))
+        password_db.create(
+            tuple(cmd._replace(password=encrypt.encrypt(cmd.password))) + (salt,)
+        )
 
-    def call_db_read(self, DB: SqlDatabase, encryption_key: str, cmd):
-        rows = DB.read(cmd)
+    def call_db_read(self, password_db: SqlDatabase, encryption_key: str, cmd):
+        rows = password_db.read(cmd)
         if not rows:
             logging.error("The given combination of user and app doesn't exist")
         elif len(rows) > 2:
@@ -144,14 +147,16 @@ class FlowManager:
         )
         return common_fields_type(**common_dict, **fields_to_add)
 
-    def execute_user_command(self, user_cmd, DB: SqlDatabase, encryption_key: str):
+    def execute_user_command(
+        self, user_cmd, password_db: SqlDatabase, encryption_key: str
+    ):
         mode, cmd = user_cmd
         if mode == command.CommandMode.CREATE:
-            self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=cmd)
+            self.call_db_create(password_db, encryption_key, cmd)
         if mode == command.CommandMode.READ:
-            self.call_db_read(DB=DB, encryption_key=encryption_key, cmd=cmd)
+            self.call_db_read(password_db, encryption_key, cmd)
         if mode == command.CommandMode.PRINT_ALL:
-            for row in DB.read_all():
+            for row in password_db.read_all():
                 user_name, app, encrypted_password, salt = row
                 encrypt.init_encrypt(encryption_key, salt)
                 try:
@@ -163,7 +168,7 @@ class FlowManager:
                     break
                 print(f"{user_name}, {app}, {dec_password}")
         if mode == command.CommandMode.PRINT_ALL_ENCRYPTED:
-            for row in DB.read_all():
+            for row in password_db.read_all():
                 user_name, app, encrypted_password, salt = row
                 print(f"{user_name}, {app}, {encrypted_password}, {salt}")
         if mode == command.CommandMode.GENERATE:
@@ -172,10 +177,12 @@ class FlowManager:
                 {"password_length"},
                 {"password": self.get_random_string(int(cmd.password_length))},
             )
-            self.call_db_create(DB=DB, encryption_key=encryption_key, cmd=new_cmd)
-            logging.info(f"Succesfully generated new password: {new_cmd.password}")
+            self.call_db_create(
+                password_db=password_db, encryption_key=encryption_key, cmd=new_cmd
+            )
+            print(f"Succesfully generated new password: {new_cmd.password}")
         if mode == command.CommandMode.SHOW_DB_FILE:
-            logging.info(os.path.abspath(DB.get_db_location()))
+            logging.info(os.path.abspath(password_db.get_db_location()))
         if mode == command.CommandMode.DONE:
             return True
 
@@ -199,8 +206,8 @@ def main():
     config_log(args)
     try:
         FlowManager(args).run()
-    except Exception as e:
-        logging.critical(str(e))
+    except Exception as exception:
+        logging.critical(str(exception))
 
 
 if __name__ == "__main__":

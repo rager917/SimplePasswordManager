@@ -1,11 +1,9 @@
-import main
-import pytest
+import tempfile
 import os
-import shutil
-from unittest import mock
+
+import pytest
 from main import FlowManager
 from main import get_user_flags
-import tempfile
 
 user_create_db_flow = [
     (
@@ -24,7 +22,7 @@ user_create_db_flow = [
 
 # TODO[MS]: Add a way to actually check output
 @pytest.mark.parametrize("args", user_create_db_flow)
-def test_user_creation_db_interactive(caplog, args, monkeypatch):
+def test_user_creation_db_interactive(args, monkeypatch):
     # try:
     with tempfile.TemporaryDirectory() as tmpdirname:
         os.chdir(tmpdirname)
